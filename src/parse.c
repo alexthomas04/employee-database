@@ -10,22 +10,22 @@
 #include "common.h"
 #include "parse.h"
 
-void list_employees(struct dbheader_t *dbhdr, struct employee_t *employees) {
-  int longestName =0, longestAddress=0;
-  int i=0;
-  for(i=0;i<dbhdr->count;i++){
-    struct employee_t e = employees[i];
+//void list_employees(struct dbheader_t *dbhdr, struct employee_t *employees) {
+//  int longestName =0, longestAddress=0;
+//  int i=0;
+//  for(i=0;i<dbhdr->count;i++){
+//    struct employee_t e = employees[i];
 //    if(strlen(e.name
-  }
-}
-
-int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees, char *addstring) {
-
-}
-
-int read_employees(int fd, struct dbheader_t *dbhdr, struct employee_t **employeesOut) {
-
-}
+//  }
+//}
+//
+//int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees, char *addstring) {
+//
+//}
+//
+//int read_employees(int fd, struct dbheader_t *dbhdr, struct employee_t **employeesOut) {
+//
+//}
 
 int output_file(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) {
   struct dbheader_t outputheader = {
