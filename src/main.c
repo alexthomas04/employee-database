@@ -79,9 +79,13 @@ int main(int argc, char *argv[]) {
       printf("Error reallocating empoyees for new employee\n");
       return -1;
     }
-    add_employee(header, employees, addEmployee);
-    header->filesize += get_employee_disk_size(&employees[header->count]);
-    header->count = header->count + 1;
+    if(add_employee(header, employees, addEmployee) == STATUS_SUCCESS){
+      header->filesize += get_employee_disk_size(&employees[header->count]);
+      header->count = header->count + 1;
+    } else {
+      printf("Error adding employee `%s`", addEmployee);
+      return -1;
+    }
   }
   if (listEmployees)
     list_employees(header, employees);

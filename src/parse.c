@@ -31,11 +31,16 @@ void list_employees(struct dbheader_t *dbhdr, struct employee_t *employees) {
 int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees,
                  char *addstring) {
   short idx = dbhdr->count;
-  strlcpy(employees[idx].name, strtok(addstring, ","),
-          sizeof(employees[idx].name));
-  strlcpy(employees[idx].address, strtok(NULL, ","),
-          sizeof(employees[idx].address));
-  employees[idx].hours = atoi(strtok(NULL, ","));
+  char *name = strtok(addstring, ","),
+       *address = strtok(NULL,","),
+       *hours = strtok(NULL,",");
+  if(name == NULL || address == NULL || hours == NULL){
+    printf("Invalid add input, required format is \"<name>,<address>,<hours>\" as a comma separated list\n");
+    return STATUS_ERROR;
+  }
+  strlcpy(employees[idx].name,name , sizeof(employees[idx].name));
+  strlcpy(employees[idx].address, address, sizeof(employees[idx].address));
+  employees[idx].hours = atoi(hours);
   return STATUS_SUCCESS;
 }
 
@@ -47,7 +52,6 @@ int get_employee_disk_size(struct employee_t *employee) {
 }
 
 // open `FILE` with fdopen
-// must seek to 0 with fseek
 int output_file(int fd, struct dbheader_t *dbhdr,
                 struct employee_t *employees) {
   struct dbheader_t outputheader = {.magic = htonl(dbhdr->magic),
@@ -61,7 +65,7 @@ int output_file(int fd, struct dbheader_t *dbhdr,
   FILE *fp = fdopen(fd, "w");
   if (fwrite(&outputheader, sizeof(struct dbheader_t), 1, fp) != 1) {
     perror("fwrite");
-    // return STATUS_ERROR;
+    return STATUS_ERROR;
   }
   int i = 0;
   for (; i < dbhdr->count; i++) {
@@ -215,4 +219,5 @@ int create_db_header(struct dbheader_t **headerOut) {
   header->count = 0;
   header->filesize = sizeof(struct dbheader_t);
   *headerOut = header;
+  return STATUS_SUCCESS;
 }
