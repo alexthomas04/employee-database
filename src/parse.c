@@ -10,15 +10,24 @@
 #include "common.h"
 #include "parse.h"
 
-//void list_employees(struct dbheader_t *dbhdr, struct employee_t *employees) {
-//  int longestName =0, longestAddress=0;
-//  int i=0;
-//  for(i=0;i<dbhdr->count;i++){
-//    struct employee_t e = employees[i];
-//    if(strlen(e.name
-//  }
-//}
-//
+void list_employees(struct dbheader_t *dbhdr, struct employee_t *employees) {
+  int longestName =0, longestAddress=0;
+  int i=0;
+  for(;i<dbhdr->count;i++){
+    struct employee_t e = employees[i];
+    if(strlen(e.name)>longestName)
+      longestName = strlen(e.name);
+    if(strlen(e.address)>longestAddress)
+      longestAddress = strlen(e.address);
+  }
+  printf("%*s | %*s | Hours\n",longestName,"Name",longestAddress,"Address");
+  for(i=0;i<dbhdr->count;i++){
+    struct employee_t e = employees[i];
+    printf("%*s | %*s | %04d\n",longestName,e.name,longestAddress,e.address,e.hours);
+  }
+
+}
+
 int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees, char *addstring) {
   short idx = dbhdr->count;
   strlcpy(employees[idx].name, strtok(addstring,","), sizeof(employees[idx].name));

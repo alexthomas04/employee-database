@@ -18,9 +18,10 @@ int main(int argc, char *argv[]) {
   char *filepath = NULL;
   char *addEmployee = NULL;
   bool newfile = false;
+  bool listEmployees = false;
   
   int c=0;
-  while((c = getopt(argc,argv,"nf:ha:")) != -1){
+  while((c = getopt(argc,argv,"nf:ha:l")) != -1){
     switch (c) {
       case 'n':
         newfile = true;
@@ -33,6 +34,9 @@ int main(int argc, char *argv[]) {
         return 0;
       case 'a':
         addEmployee = optarg;
+        break;
+      case 'l':
+        listEmployees = true;
         break;
       case '?':
         printf("Unknown option-%c\n",c);
@@ -76,6 +80,8 @@ int main(int argc, char *argv[]) {
     header->filesize=header->filesize+sizeof(struct employee_t);
     
   }
+  if(listEmployees)
+    list_employees(header,employees);
   if(output_file(database_fd,header,employees) == STATUS_ERROR){
     printf("Error saving database to file\n");
     return -1;
