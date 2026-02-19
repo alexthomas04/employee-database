@@ -11,6 +11,8 @@ void print_usage(char *argv[]) {
   printf("%s [flags]\n", argv[0]);
   printf("\t-n Creates a new file\n");
   printf("\t-f <filepath> (required) The filepath of the database\n");
+  printf("\t-a \"<name>,<address>,<hours>\" Add a user to the database with comma separated values\n");
+  printf("\t-l List the employees in the database\n");
   printf("\t-h Shows this message\n");
 }
 
