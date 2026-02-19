@@ -19,13 +19,14 @@
 //  }
 //}
 //
-//int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees, char *addstring) {
-//
-//}
-//
-//int read_employees(int fd, struct dbheader_t *dbhdr, struct employee_t **employeesOut) {
-//
-//}
+int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees, char *addstring) {
+  short idx = dbhdr->count;
+  strlcpy(employees[idx].name, strtok(addstring,","), sizeof(employees[idx].name));
+  strlcpy(employees[idx].address , strtok(NULL,","), sizeof(employees[idx].address));
+  employees[idx].hours = atoi(strtok(NULL,","));
+  return STATUS_SUCCESS;
+}
+
 
 int output_file(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) {
   struct dbheader_t outputheader = {
@@ -41,9 +42,39 @@ int output_file(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) 
     perror("write");
     return STATUS_ERROR;
   }
+  int i =0;
+  for(;i<dbhdr->count;i++){
+    struct employee_t outputEmployee = {
+      .hours=htonl(employees[i].hours)};
+    strlcpy(outputEmployee.name, employees[i].name, sizeof(outputEmployee.name));
+    strlcpy(outputEmployee.address, employees[i].address, sizeof(outputEmployee.address));
+    if(write(fd,&outputEmployee,sizeof(struct employee_t)) != sizeof(struct employee_t)){
+      perror("write");
+      return STATUS_ERROR;
+    }
+  }
   return STATUS_SUCCESS;
 
 }	
+
+int read_employees(int fd, struct dbheader_t *dbhdr, struct employee_t **employeesOut) {
+  struct employee_t *employees = calloc(dbhdr->count, sizeof(struct employee_t));
+  if(employees == NULL){
+    printf("unable to allocate employees\n");
+    return STATUS_ERROR;
+  }
+    if(read(fd,employees, dbhdr->count*sizeof(struct employee_t)) != dbhdr->count*sizeof(struct employee_t)){
+      printf("Error reading employees \n");
+      free(employees);
+      return STATUS_ERROR;
+    }
+  int i=0;
+  for(;i<dbhdr->count;i++){
+    employees[i].hours = ntohl(employees[i].hours);
+  }
+  *employeesOut = employees;
+  return STATUS_SUCCESS;
+}
 
 int validate_db_header(int fd, struct dbheader_t **headerOut) {
   struct dbheader_t *header = calloc(1, sizeof(struct dbheader_t));
@@ -90,7 +121,7 @@ int validate_db_header(int fd, struct dbheader_t **headerOut) {
 
 }
 
-int create_db_header(int fd, struct dbheader_t **headerOut) {
+int create_db_header(struct dbheader_t **headerOut) {
   struct dbheader_t *header = calloc(1,sizeof(struct dbheader_t));
   if(header == NULL){
     printf("Unable to allocate header\n");
