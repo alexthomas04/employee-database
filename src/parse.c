@@ -39,6 +39,13 @@ int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees,
   return STATUS_SUCCESS;
 }
 
+int get_employee_disk_size(struct employee_t *employee) {
+  int size = 8; // 2 (row header/record length) + 4 (hours) + 1x2 (name/address lengths)
+  size += strnlen(employee->name, sizeof employee->name);
+  size += strnlen(employee->address, sizeof employee->address);
+  return size;
+}
+
 // open `FILE` with fdopen
 // must seek to 0 with fseek
 int output_file(int fd, struct dbheader_t *dbhdr,
@@ -182,17 +189,17 @@ int validate_db_header(int fd, struct dbheader_t **headerOut) {
     return STATUS_ERROR;
   }
 
-  // struct stat s = {0};
-  // if(fstat(fd, &s) == -1){
-  //   printf("Error stating database file\n");
-  //   free(header);
-  //   return STATUS_ERROR;
-  // }
-  // if(s.st_size != header->filesize){
-  //   printf("Database filesize does not match header\n");
-  //   free(header);
-  //   return STATUS_ERROR;
-  // }
+   struct stat s = {0};
+   if(fstat(fd, &s) == -1){
+     printf("Error stating database file\n");
+     free(header);
+     return STATUS_ERROR;
+   }
+   if(s.st_size != header->filesize){
+     printf("Database filesize does not match header\n");
+     free(header);
+     return STATUS_ERROR;
+   }
   *headerOut = header;
   return STATUS_SUCCESS;
 }

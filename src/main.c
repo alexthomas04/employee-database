@@ -78,8 +78,8 @@ int main(int argc, char *argv[]) {
       return -1;
     }
     add_employee(header, employees, addEmployee);
+    header->filesize += get_employee_disk_size(&employees[header->count]);
     header->count = header->count + 1;
-    header->filesize = header->filesize + sizeof(struct employee_t);
   }
   if (listEmployees)
     list_employees(header, employees);
