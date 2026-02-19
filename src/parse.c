@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "common.h"
 #include "parse.h"
@@ -36,7 +37,8 @@ int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees, char *a
   return STATUS_SUCCESS;
 }
 
-
+// open `FILE` with fdopen
+// must seek to 0 with fseek
 int output_file(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) {
   struct dbheader_t outputheader = {
     .magic=htonl(dbhdr->magic),
@@ -47,18 +49,14 @@ int output_file(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) 
     perror("lseek");
     return STATUS_ERROR;
   }
-  if(write(fd,&outputheader,sizeof(struct dbheader_t)) != sizeof(struct dbheader_t)){
-    perror("write");
-    return STATUS_ERROR;
+  FILE *fp = fdopen(fd,"w");
+  if(fwrite(&outputheader,sizeof(struct dbheader_t),1,fp) != 1){
+    perror("fwrite");
+    // return STATUS_ERROR;
   }
   int i =0;
   for(;i<dbhdr->count;i++){
-    struct employee_t outputEmployee = {
-      .hours=htonl(employees[i].hours)};
-    strlcpy(outputEmployee.name, employees[i].name, sizeof(outputEmployee.name));
-    strlcpy(outputEmployee.address, employees[i].address, sizeof(outputEmployee.address));
-    if(write(fd,&outputEmployee,sizeof(struct employee_t)) != sizeof(struct employee_t)){
-      perror("write");
+    if(write_employee(fp,&employees[i])==STATUS_ERROR){
       return STATUS_ERROR;
     }
   }
@@ -66,21 +64,85 @@ int output_file(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) 
 
 }	
 
+int write_employee(FILE *fp, struct employee_t *e){
+  size_t name_len = strnlen(e->name,sizeof e->name);
+  size_t address_len = strnlen(e->address,sizeof e->address);
+
+  if(name_len>255 || address_len>255){
+    printf("Invalid name or address length, max length is 255\n");
+    return STATUS_ERROR;
+  }
+
+  // length of lengths (2) + name length + address length + hours length (4) 
+  uint16_t payload_length = (uint16_t) (2 + name_len + address_len + 4);
+
+  //total record bytes including the 2-byte record length field
+  uint16_t total_length = payload_length +2;
+
+  uint8_t *buffer = malloc(total_length);
+  if(buffer == NULL){
+    printf("Unable to allocate buffer to write employee\n");
+    return STATUS_ERROR;
+  }
+  size_t offset = 0;
+  uint16_t net_len = htons(payload_length);
+  memcpy(buffer + offset, &net_len, 2);
+  offset+=2;
+  buffer[offset++] = (uint8_t) name_len;
+  buffer[offset++] = (uint8_t) address_len;
+
+  memcpy(buffer+offset,&e->name,name_len);
+  offset+=name_len;
+  memcpy(buffer+offset,&e->address,address_len);
+  offset+=address_len;
+
+  uint32_t net_hours = htonl(e->hours);
+  memcpy(buffer+offset,&net_hours,4);
+  offset+=4;
+
+  size_t items_written = fwrite(buffer,total_length,1,fp);
+  free(buffer);
+  return 1==items_written?STATUS_SUCCESS:STATUS_ERROR;
+}
+
 int read_employees(int fd, struct dbheader_t *dbhdr, struct employee_t **employeesOut) {
   struct employee_t *employees = calloc(dbhdr->count, sizeof(struct employee_t));
   if(employees == NULL){
     printf("unable to allocate employees\n");
     return STATUS_ERROR;
   }
-    if(read(fd,employees, dbhdr->count*sizeof(struct employee_t)) != dbhdr->count*sizeof(struct employee_t)){
-      printf("Error reading employees \n");
+  FILE *fp = fdopen(fd,"r");
+  //we know that the max length of the buffer is the length of the employee plus the size of the strings, so we can safely allocate it once and just use the length header to know what parts to use right?
+    uint8_t *buffer = malloc(sizeof(struct employee_t)+2);
+    if(buffer == NULL){
+      printf("Unable to allocate buffer for reading employees\n");
       free(employees);
       return STATUS_ERROR;
     }
   int i=0;
   for(;i<dbhdr->count;i++){
+    uint16_t buffer_length =0;
+    if(fread(&buffer_length,2,1,fp)!=1){
+      printf("Unable to read buffer length\n");
+      return STATUS_ERROR;
+    }
+    buffer_length = ntohs(buffer_length);
+    if(fread(buffer,buffer_length,1,fp)!=1){
+      perror("fread");
+      printf("Unable to read employee to buffer %d\n",buffer_length);
+      return STATUS_ERROR;
+    }
+    size_t offset = 0;
+    size_t name_len = (size_t)buffer[offset++];
+    size_t address_len = (size_t)buffer[offset++];
+    strlcpy(employees[i].name,buffer+offset,name_len+1); //+1 for null terminator
+    offset+=name_len;
+    strlcpy(employees[i].address,buffer+offset,address_len+1);
+    offset+=address_len;
+    memcpy(&employees[i].hours,buffer+offset,4);
     employees[i].hours = ntohl(employees[i].hours);
   }
+  free(buffer);
   *employeesOut = employees;
   return STATUS_SUCCESS;
 }
@@ -113,17 +175,17 @@ int validate_db_header(int fd, struct dbheader_t **headerOut) {
     return STATUS_ERROR;
   }
 
-  struct stat s = {0};
-  if(fstat(fd, &s) == -1){
-    printf("Error stating database file\n");
-    free(header);
-    return STATUS_ERROR;
-  }
-  if(s.st_size != header->filesize){
-    printf("Database filesize does not match header\n");
-    free(header);
-    return STATUS_ERROR;
-  }
+  //struct stat s = {0};
+  //if(fstat(fd, &s) == -1){
+  //  printf("Error stating database file\n");
+  //  free(header);
+  //  return STATUS_ERROR;
+  //}
+  //if(s.st_size != header->filesize){
+  //  printf("Database filesize does not match header\n");
+  //  free(header);
+  //  return STATUS_ERROR;
+  //}
   *headerOut = header;
   return STATUS_SUCCESS;
 
