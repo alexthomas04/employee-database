@@ -1,21 +1,29 @@
-TARGET = bin/dbview
-SRC = $(wildcard src/*.c)
-OBJ = $(patsubst src/%.c, obj/%.o, $(SRC))
+SERVER_TARGET = bin/server
+SERVER_SRC = $(wildcard src/server/*.c)
+SERVER_OBJ = $(patsubst src/server/%.c, obj/server/%.o, $(SERVER_SRC)) $(patsubst src/common/%.c, obj/common/%.o, $(COMMON_SRC))
 
-run: clean default
-	./$(TARGET) -f ./mynewdb.db -n 
-	./$(TARGET) -f ./mynewdb.db -a "Timmy H.,123 Sheshire Ln.,120"
-	./$(TARGET) -f ./mynewdb.db -a "Timmy R.,Missing Value"; test $$? -ne 0
-	./$(TARGET) -f ./mynewdb.db -l
+CLIENT_TARGET = bin/cli
+CLIENT_SRC = $(wildcard src/cli/*.c)
+CLIENT_OBJ = $(patsubst src/cli/%.c, obj/cli/%.o, $(CLIENT_SRC)) $(patsubst src/common/%.c, obj/common/%.o, $(COMMON_SRC))
 
-default: $(TARGET)
+COMMON_SRC = $(wildcard src/common/*c)
+
+
+default: directories clean $(SERVER_TARGET) $(CLIENT_TARGET)
+
+directories:
+	mkdir -p bin obj/server obj/cli  obj/common
+
 
 clean:
-	rm -f obj/*.o
+	rm -f obj/*/*.o
 	rm -f bin/*
 	rm -f *.db
 
-$(TARGET): $(OBJ)
+$(SERVER_TARGET): $(SERVER_OBJ)
+	gcc -g -o $@ $?
+
+$(CLIENT_TARGET): $(CLIENT_OBJ)
 	gcc -g -o $@ $?
 
 obj/%.o : src/%.c

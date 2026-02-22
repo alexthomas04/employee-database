@@ -8,25 +8,25 @@
 #include "common.h"
 #include "file.h"
 
-int create_db_file(char *filename) {
+int create_db_file(char *filename, FILE **fpOut) {
   int fd = open(filename, O_RDONLY);
   if (fd != -1) {
     printf("File \"%s\" already exists\n", filename);
     return STATUS_ERROR;
   }
-  fd = open(filename, O_CREAT | O_RDWR, 0664);
-  if (fd == -1) {
-    perror("open");
+  *fpOut = fopen(filename, "w+"); // rw with truncate
+  if (*fpOut == NULL) {
+    perror("fopen");
     return STATUS_ERROR;
   }
-  return fd;
+  return STATUS_SUCCESS;
 }
 
-int open_db_file(char *filename) {
-  int fd = open(filename, O_RDWR, 0644);
-  if (fd == -1) {
+int open_db_file(char *filename, FILE **fpOut) {
+  *fpOut = fopen(filename, "r+"); //rw without truncate
+  if (*fpOut == NULL) {
     perror("open");
     return STATUS_ERROR;
   }
-  return fd;
+  return STATUS_SUCCESS;
 }

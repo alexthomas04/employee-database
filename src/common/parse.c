@@ -28,9 +28,8 @@ void list_employees(struct dbheader_t *dbhdr, struct employee_t *employees) {
   }
 }
 
-int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees,
+int parse_str_employee(struct employee_t *employee,
     char *addstring) {
-  short idx = dbhdr->count;
   char *name = strtok(addstring, ","),
        *address = strtok(NULL,","),
        *hours = strtok(NULL,",");
@@ -38,37 +37,26 @@ int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees,
     printf("Invalid add input, required format is \"<name>,<address>,<hours>\" as a comma separated list\n");
     return STATUS_ERROR;
   }
-  strlcpy(employees[idx].name,name , sizeof(employees[idx].name));
-  strlcpy(employees[idx].address, address, sizeof(employees[idx].address));
-  employees[idx].hours = atoi(hours);
+  strlcpy(employee->name,name , sizeof(employee->name));
+  strlcpy(employee->address, address, sizeof(employee->address));
+  employee->hours = atoi(hours);
   return STATUS_SUCCESS;
 }
 
-int get_employee_disk_size(struct employee_t *employee) {
+int get_employee_net_size(struct employee_t *employee) {
   int size = 8; // 2 (row header/record length) + 4 (hours) + 1x2 (name/address lengths)
   size += strnlen(employee->name, sizeof employee->name);
   size += strnlen(employee->address, sizeof employee->address);
   return size;
 }
 
-// open `FILE` with fdopen
-int output_file(int fd, struct dbheader_t *dbhdr,
+int output_file(FILE *fp, struct dbheader_t *dbhdr,
     struct employee_t *employees) {
-  struct dbheader_t outputheader = {.magic = htonl(dbhdr->magic),
-    .version = htons(dbhdr->version),
-    .count = htons(dbhdr->count),
-    .filesize = htonl(dbhdr->filesize)};
-  if (lseek(fd, 0, SEEK_SET) == -1) {
-    perror("lseek");
+  if(write_header(fp, dbhdr) == STATUS_ERROR) {
+    printf("Error writing header\n");
     return STATUS_ERROR;
   }
-  FILE *fp = fdopen(fd, "w");
-  if (fwrite(&outputheader, sizeof(struct dbheader_t), 1, fp) != 1) {
-    perror("fwrite");
-    return STATUS_ERROR;
-  }
-  int i = 0;
-  for (; i < dbhdr->count; i++) {
+  for (int i = 0; i < dbhdr->count; i++) {
     if (write_employee(fp, &employees[i]) == STATUS_ERROR) {
       return STATUS_ERROR;
     }
@@ -76,30 +64,53 @@ int output_file(int fd, struct dbheader_t *dbhdr,
   return STATUS_SUCCESS;
 }
 
-int write_employee(FILE *fp, struct employee_t *e) {
-  size_t name_len = strnlen(e->name, sizeof e->name);
-  size_t address_len = strnlen(e->address, sizeof e->address);
-
-  if (name_len > 255 || address_len > 255) {
-    printf("Invalid name or address length, max length is 255\n");
+int write_header(FILE *fp,struct dbheader_t *dbhdr){
+  struct dbheader_t outputheader = {.magic = htonl(dbhdr->magic),
+    .version = htons(dbhdr->version),
+    .count = htons(dbhdr->count),
+    .filesize = htonl(dbhdr->filesize)};
+  if (fseek(fp, 0, SEEK_SET) == -1) {
+    perror("fseek");
     return STATUS_ERROR;
   }
+  if (fwrite(&outputheader, sizeof(struct dbheader_t), 1, fp) != 1) {
+    perror("fwrite");
+    return STATUS_ERROR;
+  }
+  if(fflush(fp) != 0) {
+    perror("fflush");
+    return STATUS_ERROR;
+  }
+  return STATUS_SUCCESS;
+}
 
-  // length of lengths (2) + name length + address length + hours length (4)
-  uint16_t payload_length = (uint16_t)(2 + name_len + address_len + 4);
-
-  // total record bytes including the 2-byte record length field
-  uint16_t total_length = payload_length + 2;
-
-  uint8_t *buffer = malloc(total_length);
+int write_employee(FILE *fp, struct employee_t *e) {
+  uint8_t *buffer = malloc(sizeof(struct employee_t)+2);
   if (buffer == NULL) {
     printf("Unable to allocate buffer to write employee\n");
     return STATUS_ERROR;
   }
-  size_t offset = 0;
+  size_t payload_length = employee_to_buffer(&buffer[2], e);
+  if(payload_length == STATUS_ERROR){
+    free(buffer);
+    return STATUS_ERROR;
+  }
+  uint16_t total_length = payload_length + 2;
   uint16_t net_len = htons(payload_length);
-  memcpy(buffer + offset, &net_len, 2);
-  offset += 2;
+  memcpy(buffer, &net_len, 2);
+  size_t items_written = fwrite(buffer, total_length, 1, fp);
+  free(buffer);
+  return 1 == items_written ? STATUS_SUCCESS : STATUS_ERROR;
+}
+
+size_t employee_to_buffer(char *buffer, struct employee_t *e) {
+  size_t offset = 0;
+  size_t name_len = strnlen(e->name, sizeof e->name);
+  size_t address_len = strnlen(e->address, sizeof e->address);
+  if (name_len > 255 || address_len > 255) {
+    printf("Invalid name or address length, max length is 255\n");
+    return STATUS_ERROR;
+  }
   buffer[offset++] = (uint8_t)name_len;
   buffer[offset++] = (uint8_t)address_len;
 
@@ -111,13 +122,10 @@ int write_employee(FILE *fp, struct employee_t *e) {
   uint32_t net_hours = htonl(e->hours);
   memcpy(buffer + offset, &net_hours, 4);
   offset += 4;
-
-  size_t items_written = fwrite(buffer, total_length, 1, fp);
-  free(buffer);
-  return 1 == items_written ? STATUS_SUCCESS : STATUS_ERROR;
+  return offset;
 }
 
-int read_employees(int fd, struct dbheader_t *dbhdr,
+int read_employees(FILE *fp, struct dbheader_t *dbhdr,
     struct employee_t **employeesOut) {
   struct employee_t *employees =
     calloc(dbhdr->count, sizeof(struct employee_t));
@@ -125,7 +133,6 @@ int read_employees(int fd, struct dbheader_t *dbhdr,
     printf("unable to allocate employees\n");
     return STATUS_ERROR;
   }
-  FILE *fp = fdopen(fd, "r");
   // we know that the max length of the buffer is the length of the employee
   // plus the size of the strings, so we can safely allocate it once and just
   // use the length header to know what parts to use right?
@@ -158,30 +165,34 @@ int read_employees(int fd, struct dbheader_t *dbhdr,
       free(employees);
       return STATUS_ERROR;
     }
-    size_t offset = 0;
-    size_t name_len = (size_t)buffer[offset++];
-    size_t address_len = (size_t)buffer[offset++];
-    strlcpy(employees[i].name, buffer + offset,
-        name_len + 1); // +1 for null terminator
-    offset += name_len;
-    strlcpy(employees[i].address, buffer + offset, address_len + 1);
-    offset += address_len;
-    memcpy(&employees[i].hours, buffer + offset, 4);
-    employees[i].hours = ntohl(employees[i].hours);
+    parse_net_employee(buffer, &employees[i]);
   }
   free(buffer);
   *employeesOut = employees;
   return STATUS_SUCCESS;
 }
 
-int validate_db_header(int fd, struct dbheader_t **headerOut) {
+void parse_net_employee(char *buffer, struct employee_t *employee) {
+  size_t offset = 0;
+  size_t name_len = (size_t)buffer[offset++];
+  size_t address_len = (size_t)buffer[offset++];
+  strlcpy(employee->name, buffer + offset, name_len + 1); // +1 for null terminator
+  employee->name[name_len] = '\0';
+  offset += name_len;
+  strlcpy(employee->address, buffer + offset, address_len + 1);
+  employee->address[address_len] = '\0';
+  offset += address_len;
+  memcpy(&employee->hours, buffer + offset, 4);
+  employee->hours = ntohl(employee->hours);
+}
+
+int validate_db_header(FILE *fp, struct dbheader_t **headerOut) {
   struct dbheader_t *header = calloc(1, sizeof(struct dbheader_t));
   if (header == NULL) {
     printf("Unable to allocate header\n");
     return STATUS_ERROR;
   }
-  if (read(fd, header, sizeof(struct dbheader_t)) !=
-      sizeof(struct dbheader_t)) {
+  if (fread( header, sizeof(struct dbheader_t), 1, fp) != 1) {
     printf("Unable to read header from file\n");
     free(header);
     return STATUS_ERROR;
@@ -204,6 +215,12 @@ int validate_db_header(int fd, struct dbheader_t **headerOut) {
   }
 
   struct stat s = {0};
+  int fd = fileno(fp);
+  if(fd == -1){
+    perror("fileno");
+    free(header);
+    return STATUS_ERROR;
+  }
   if(fstat(fd, &s) == -1){
     printf("Error stating database file\n");
     free(header);
