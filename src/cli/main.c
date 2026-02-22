@@ -10,6 +10,9 @@
 #include "common.h"
 #include "parse.h"
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+
 static int send_employee(struct employee_t *employee, int socket_fd) {
   size_t employee_size = get_employee_net_size(employee) - 2; //-2 because the header length is handled by protocol_t.len
   char *buffer = calloc(1, employee_size);
@@ -29,8 +32,12 @@ static int initialize_connection(int socket_fd) {
     printf("Error sending hello message\n");
     return STATUS_ERROR;
   }
+  if(write_protocol_data(socket_fd, WHOAMI_REQ, NULL, 0) == STATUS_ERROR) {
+    printf("Error requesting whoami\n");
+    return STATUS_ERROR;
+  }
 
-  bool gotVersion = false, gotWhoami = true; //TODO: implement whoami
+  bool gotVersion = false, gotWhoami = false; 
   
   while(!gotWhoami || !gotVersion) {
     struct protocol_t protocol = {0};
@@ -43,6 +50,15 @@ static int initialize_connection(int socket_fd) {
         if(read_hello_message(socket_fd, protocol) == STATUS_ERROR)
           return STATUS_ERROR;
         gotVersion = true;
+        break;
+      case WHOAMI_RES:
+        struct whoami_response_t response = {0};
+        if(read_message(socket_fd, protocol, &response, MIN(protocol.len,sizeof response)) == STATUS_ERROR) {
+          printf("Error reading whoami\n");
+          return STATUS_ERROR;
+        }
+        printf("Self Discovery aquired; I am: %s\n", response.ipString);
+        gotWhoami = true;
         break;
     }
   }
@@ -85,6 +101,10 @@ int main(int argc, char *argv[]) {
     return -1;
   }
   printf("Got %s response from add employee\n",response.status==STATUS_SUCCESS?"successful":"error");
+  if(write_protocol_data(socket_fd, GOODBYE, NULL, 0) == STATUS_ERROR) {
+    printf("Error saying goodbye\n");
+    return -1;
+  }
   
   return 0;
 }

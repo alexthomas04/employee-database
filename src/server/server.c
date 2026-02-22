@@ -53,7 +53,7 @@ static int accept_client(int serverFd, struct client_t *client) {
   return 0;
 }
 
-static int handle_add_employee(struct client_t *client, struct protocol_t protocol, FILE *dbFile, struct dbheader_t *header) {
+static int add_employee(struct client_t *client, struct protocol_t protocol, FILE *dbFile, struct dbheader_t *header) {
   if(protocol.len > sizeof(struct employee_t) + 2) {
     printf("Invalid size for employee %d\n", protocol.len);
     return STATUS_ERROR;
@@ -91,6 +91,30 @@ static int handle_add_employee(struct client_t *client, struct protocol_t protoc
   return STATUS_SUCCESS;
 }
 
+static int handle_add_employee(struct client_t *client, struct protocol_t protocol, FILE *dbFile, struct dbheader_t *header) {
+  int status = add_employee(client,protocol,dbFile,header);
+  struct status_response_t response = {.status=htonl(status)};
+  if( write_protocol_data(client->fd, ADD_EMPLOYEE_RES, &response, sizeof(response)) == STATUS_ERROR) {
+    printf("Error writing add employee response to client\n");
+      return STATUS_ERROR;
+  }
+  return status;
+}
+
+static int handle_whoami(struct client_t *client, struct protocol_t protocol) {
+  if(protocol.len!=0) {
+    printf("invalid protocol length for whoami\n");
+    return STATUS_ERROR;
+  }
+  struct whoami_response_t response = {0};
+  ip_to_string(client, response.ipString);
+  size_t len = strnlen(response.ipString,sizeof response.ipString);
+  if(write_protocol_data(client->fd, WHOAMI_RES, &response, len) == STATUS_ERROR) {
+    printf("Error writing whoami response\n");
+    return STATUS_ERROR;
+  }
+  return len;
+}
 
 #define CLIENTS 5
 
@@ -135,15 +159,16 @@ static int handle_client(struct client_t *client, FILE *dbFile, struct dbheader_
   switch (protocol.type) {
     case PROTOCOL_HELLO:
       return read_hello_message(client->fd, protocol)==STATUS_SUCCESS?sizeof(struct hello_message_t):-1;
-
     case ADD_EMPLOYEE_REQ:
       int status = handle_add_employee(client, protocol, dbFile, header);
-      struct status_response_t response = {.status=htonl(status)};
-      write_protocol_data(client->fd, ADD_EMPLOYEE_RES, &response, sizeof(response));
-      return status;
+      return status == STATUS_ERROR?STATUS_ERROR:protocol.len;
+    case WHOAMI_REQ:
+      return handle_whoami(client, protocol);
+    case GOODBYE:
+      return 0;
     case LIST_EMPLOYEES_REQ:
     default:
-      printf("Unsupported protocol message\n");
+      printf("Unsupported protocol message: %d\n",protocol.type);
       return STATUS_ERROR;
   }
 }

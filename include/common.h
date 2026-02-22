@@ -31,6 +31,10 @@ struct status_response_t {
   int status;
 };
 
+struct whoami_response_t {
+  char ipString[16];
+};
+
 
 
 int build_socket_fd_bind(uint32_t s_addr);
