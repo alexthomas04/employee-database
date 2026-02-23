@@ -54,23 +54,11 @@ static int accept_client(int serverFd, struct client_t *client) {
 }
 
 static int add_employee(struct client_t *client, struct protocol_t protocol, FILE *dbFile, struct dbheader_t *header) {
-  if(protocol.len > sizeof(struct employee_t) + 2) {
-    printf("Invalid size for employee %d\n", protocol.len);
-    return STATUS_ERROR;
-  }
-  char *buffer = calloc(1, protocol.len);
-  if(buffer == NULL){
-    printf("Error allocating memory for add employee buffer\n");
-    return STATUS_ERROR;
-  }
-  if(read(client->fd, buffer, protocol.len) != protocol.len) {
-    perror("read");
-    free(buffer);
-    return STATUS_ERROR;
-  }
   struct employee_t employee = {0};
-  parse_net_employee(buffer, &employee);
-  free(buffer);
+  if(recieve_employee(client->fd, protocol, &employee) == STATUS_ERROR){
+    printf("Error recieving employee\n");
+    return STATUS_ERROR;
+  }
   if(fseek(dbFile, header->filesize, SEEK_SET) == -1) {
     perror("fseek");
     return STATUS_ERROR;
@@ -114,6 +102,33 @@ static int handle_whoami(struct client_t *client, struct protocol_t protocol) {
     return STATUS_ERROR;
   }
   return len;
+}
+
+static int handle_list_employees(struct client_t *client, struct protocol_t protocol, FILE *dbFile, struct dbheader_t *header){
+  if(fseek(dbFile, sizeof(struct dbheader_t), SEEK_SET) == -1){
+    perror("fseek");
+    printf("Error seeking db file\n");
+    return STATUS_ERROR;
+  }
+  struct list_employees_response_t r = {.count=htons(header->count)};
+  int writtenCount = sizeof r;
+  if(write_protocol_data(client->fd, LIST_EMPLOYEES_RES, &r, sizeof r) == -1){
+    printf("Error writing list employees response\n");
+    return STATUS_ERROR;
+  }
+  struct employee_t *employees = NULL;
+  if(read_employees(dbFile, header, &employees) == STATUS_ERROR){
+    printf("Error reading employees\n");
+    return STATUS_ERROR;
+  }
+  for(int i = 0; i<header->count;i++) {
+    writtenCount += get_employee_net_size(&employees[i]) - 2 + sizeof(struct protocol_t);
+    if(send_employee(&employees[i], client->fd, SEND_EMPLOYEE) == STATUS_ERROR){
+      printf("Error sending employee #%d\n",i);
+      return STATUS_ERROR;
+    }
+  }
+  return writtenCount;
 }
 
 #define CLIENTS 5
@@ -160,13 +175,13 @@ static int handle_client(struct client_t *client, FILE *dbFile, struct dbheader_
     case PROTOCOL_HELLO:
       return read_hello_message(client->fd, protocol)==STATUS_SUCCESS?sizeof(struct hello_message_t):-1;
     case ADD_EMPLOYEE_REQ:
-      int status = handle_add_employee(client, protocol, dbFile, header);
-      return status == STATUS_ERROR?STATUS_ERROR:protocol.len;
+      return handle_add_employee(client, protocol, dbFile, header);
     case WHOAMI_REQ:
       return handle_whoami(client, protocol);
     case GOODBYE:
       return 0;
     case LIST_EMPLOYEES_REQ:
+      return handle_list_employees(client, protocol, dbFile, header);
     default:
       printf("Unsupported protocol message: %d\n",protocol.type);
       return STATUS_ERROR;

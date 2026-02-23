@@ -1,5 +1,7 @@
 #include <stdint.h>
 
+#include "parse.h"
+
 #ifndef COMMON_H
 #define COMMON_H
 
@@ -13,6 +15,7 @@ enum protocoltype_e {
   ADD_EMPLOYEE_RES,
   LIST_EMPLOYEES_REQ,
   LIST_EMPLOYEES_RES,
+  SEND_EMPLOYEE,
   WHOAMI_REQ,
   WHOAMI_RES,
   GOODBYE,
@@ -28,11 +31,15 @@ struct hello_message_t {
 };
 
 struct status_response_t {
-  int status;
+  uint32_t status;
 };
 
 struct whoami_response_t {
   char ipString[16];
+};
+
+struct list_employees_response_t {
+  uint16_t count;
 };
 
 
@@ -44,5 +51,7 @@ int read_message(int socket_fd, struct protocol_t protocol, void *out, size_t le
 int write_hello_message(int fd);
 int read_protocol(int socket_fd, struct protocol_t *protocol);
 int write_protocol_data(int socket_fd, int type, void *data, uint16_t len);
+int send_employee(struct employee_t *employee, int socket_fd, enum protocoltype_e type);
+int recieve_employee(int socket_fd, struct protocol_t protocol, struct employee_t *employee);
 
 #endif

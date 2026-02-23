@@ -8,42 +8,43 @@
 #include <stdlib.h>
 
 #include "common.h"
+#include "parse.h"
 
 static int make_socket_and_addr(uint32_t s_addr, struct sockaddr_in* out) {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == -1) return -1;
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (fd == -1) return -1;
 
-    int opt = 1;
-    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-        return -1;
+  int opt = 1;
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+    return -1;
 
-    out->sin_port = htons(PORT);
-    out->sin_family = AF_INET;
-    out->sin_addr.s_addr = s_addr;
+  out->sin_port = htons(PORT);
+  out->sin_family = AF_INET;
+  out->sin_addr.s_addr = s_addr;
 
-    return fd;
+  return fd;
 }
 
 int build_socket_fd_bind(uint32_t s_addr) {
-    struct sockaddr_in info = {0};
-    int fd = make_socket_and_addr(s_addr, &info);
-    if (fd < 0) return -1;
-    if(bind(fd, (struct sockaddr*)&info, sizeof(info)) == -1){
-      perror("bind");
-      return -1;
-    }
-    return fd;
+  struct sockaddr_in info = {0};
+  int fd = make_socket_and_addr(s_addr, &info);
+  if (fd < 0) return -1;
+  if(bind(fd, (struct sockaddr*)&info, sizeof(info)) == -1){
+    perror("bind");
+    return -1;
+  }
+  return fd;
 }
 
 int build_socket_fd_connect(uint32_t s_addr) {
-    struct sockaddr_in info = {0};
-    int fd = make_socket_and_addr(s_addr, &info);
-    if (fd < 0) return -1;
-    if(connect(fd, (struct sockaddr*)&info, sizeof(info)) == -1){
-      perror("connect");
-      return -1;
-    }
-    return fd;
+  struct sockaddr_in info = {0};
+  int fd = make_socket_and_addr(s_addr, &info);
+  if (fd < 0) return -1;
+  if(connect(fd, (struct sockaddr*)&info, sizeof(info)) == -1){
+    perror("connect");
+    return -1;
+  }
+  return fd;
 }
 
 int read_message(int socket_fd, struct protocol_t protocol, void *out, size_t len) {
@@ -80,18 +81,18 @@ int write_hello_message(int fd) {
 int read_protocol(int socket_fd, struct protocol_t *protocol) {
   size_t protocolSize = sizeof(struct protocol_t);
   size_t readLen = 0;
-    readLen = read(socket_fd, protocol, protocolSize);
-    if(readLen == -1){
-      perror("read");
-      return STATUS_ERROR;
-    } 
-    if(readLen != protocolSize){
-      printf("Malformed protocol\n");
-      return STATUS_ERROR;
-    }
-    protocol->len = ntohs(protocol->len);
-    protocol->type = ntohl(protocol->type);
-    return STATUS_SUCCESS;
+  readLen = read(socket_fd, protocol, protocolSize);
+  if(readLen == -1){
+    perror("read");
+    return STATUS_ERROR;
+  } 
+  if(readLen != protocolSize){
+    printf("Malformed protocol\n");
+    return STATUS_ERROR;
+  }
+  protocol->len = ntohs(protocol->len);
+  protocol->type = ntohl(protocol->type);
+  return STATUS_SUCCESS;
 }
 
 int write_protocol_data(int socket_fd, int type, void *data, uint16_t len) {
@@ -113,3 +114,36 @@ int write_protocol_data(int socket_fd, int type, void *data, uint16_t len) {
   return STATUS_SUCCESS;
 }
 
+int send_employee(struct employee_t *employee, int socket_fd, enum protocoltype_e type) {
+  size_t employee_size = get_employee_net_size(employee) - 2; //-2 because the header length is handled by protocol_t.len
+  char *buffer = calloc(1, employee_size);
+  size_t copiedSize = employee_to_buffer(buffer, employee);
+  if( copiedSize!= employee_size){
+    printf("Poor allocation of employee buffer: allocated: %d copied: %d\n",employee_size, copiedSize);
+    free(buffer);
+    return STATUS_ERROR;
+  }
+  int writeStatus = write_protocol_data(socket_fd, type, buffer, employee_size);
+  free(buffer);
+  return writeStatus;
+}
+
+int recieve_employee(int socket_fd, struct protocol_t protocol, struct employee_t *employee) {
+  if(protocol.len > sizeof(struct employee_t) + 2) {
+    printf("Invalid size for employee %d\n", protocol.len);
+    return STATUS_ERROR;
+  }
+  char *buffer = calloc(1, protocol.len);
+  if(buffer == NULL){
+    printf("Error allocating memory for recieve employee buffer\n");
+    return STATUS_ERROR;
+  }
+  if(read(socket_fd, buffer, protocol.len) != protocol.len) {
+    perror("read");
+    free(buffer);
+    return STATUS_ERROR;
+  }
+  parse_net_employee(buffer, employee);
+  free(buffer);
+  return STATUS_SUCCESS;
+}
