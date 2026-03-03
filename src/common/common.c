@@ -138,7 +138,9 @@ int recieve_employee(int socket_fd, struct protocol_t protocol, struct employee_
     printf("Error allocating memory for recieve employee buffer\n");
     return STATUS_ERROR;
   }
-  if(read(socket_fd, buffer, protocol.len) != protocol.len) {
+  int read_len = read(socket_fd, buffer, protocol.len);
+  if( read_len != protocol.len) {
+    printf("Expected length %d, actual length %d\n",protocol.len, read_len);
     perror("read");
     free(buffer);
     return STATUS_ERROR;
